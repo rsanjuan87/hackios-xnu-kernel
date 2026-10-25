@@ -34,6 +34,7 @@
 # file that holds the image at the right offset (reflinked, so it costs neither disk space nor
 # host RAM).
 cd "$(dirname "$(readlink -f "$0")")/.." || exit 1
+stat_size() { stat -c %s "$1" 2>/dev/null || stat -f %z "$1" 2>/dev/null; }
 K=xnu-src/xnu-8796.121.2/BUILD/obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837
 [ -f $K ] || { K=prebuilt/mach.development.bcm2837; echo "run-ios.sh: no kernel built here, using $K" >&2; }
 IMG=${IMG:-userland/system.apfs}
@@ -45,7 +46,8 @@ RAM_GB=${QEMU_RAM_GB:-7}
 RAM_SIZE=$((RAM_GB << 30)) FILE_SIZE=$((12 << 30))
 INSTANCE=${QEMU_INSTANCE:-$(cat qemu/instance 2>/dev/null || echo 0)}
 # an instance takes 2.5-3 GB of host memory; starting one that does not fit gets something killed
-AVAILABLE=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo)
+AVAILABLE=$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo 2>/dev/null)
+[ -n "$AVAILABLE" ] || AVAILABLE=$(($(sysctl -n hw.memsize) / 1024 / 1024))
 if [ "${AVAILABLE:-9999}" -lt 3000 ] && [ -z "$QEMU_FORCE" ]; then
 	echo "run-ios.sh: only $AVAILABLE MB of memory available on this machine: stop another QEMU first (QEMU_FORCE=1 to start anyway)"
 	exit 1
@@ -59,8 +61,14 @@ dst = os.open(sys.argv[2], os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o644)
 offset, size = int(sys.argv[3]), int(sys.argv[4])
 os.ftruncate(dst, size)
 total, done = os.fstat(src).st_size, 0
-while done < total:
-    done += os.copy_file_range(src, dst, total - done, done, offset + done)
+if hasattr(os, 'copy_file_range'):
+    while done < total:
+        done += os.copy_file_range(src, dst, total - done, done, offset + done)
+else:  # macOS: Python does not offer copy_file_range there
+    while done < total:
+        chunk = os.pread(src, 1 << 20, offset + done)
+        os.pwrite(dst, chunk, offset + done)
+        done += len(chunk)
 PY
 fi
 NET=()
@@ -78,7 +86,7 @@ if qemu-system-aarch64 -device help 2>/dev/null | grep -q '"virtio-sound-device"
 	SOUND+=(-device virtio-sound-device,audiodev=snd,streams=1)   # one stream: output, no microphone of the host
 	CMDLINE="virtio_sound=1 $CMDLINE"
 fi
-xnuloader/mkpayload.py -o qemu/payload.bin kernel=$K ramdisk=$ROOT --rdres "$(printf '%x' "$(stat -c %s "$IMG")")" \
+xnuloader/mkpayload.py -o qemu/payload.bin kernel=$K ramdisk=$ROOT --rdres "$(printf '%x' "$(stat_size "$IMG")")" \
 	--cmdline "loader_return_after=$SECS epoch=$(date +%s) virtio_input=1 $CMDLINE" >/dev/null || exit 1
 QEMU_MEM=${RAM_GB}G exec qemu/run.sh $((SECS + 40)) \
 	-object memory-backend-file,id=ram,size=$RAM_SIZE,mem-path="$PWD/qemu/ram.img",share=off \

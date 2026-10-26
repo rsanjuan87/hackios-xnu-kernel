@@ -41,7 +41,7 @@ Not in the repository, never:
 
 | Works | Not yet |
 |---|---|
-| Lock screen, home screen, Control Center, gestures, the stock apps | Cellular: the modem boots, sees the network, the SIM is bound; registration and the status bar bars are in progress (`docs/cellular.md`) |
+| Lock screen, home screen, Control Center, gestures, the stock apps | Cellular: the modem boots, sees the network, the SIM is bound, the IPA data path and `en1` are in place; registration, the data session and the status bar bars are in progress (`docs/cellular.md`) |
 | Touch screen, multitouch, power and volume buttons | Bluetooth |
 | All 8 CPU cores, the big core at 2.4 GHz | Charging under this kernel |
 | GPU rendering on Adreno (`gpu=1`, OpenGL ES through Mesa) | Metal (there is a shader compiler, no Metal) |
@@ -125,7 +125,7 @@ module, or the open lzfse library gets built). User space and the images: `REST=
 | Directory | Contents |
 |---|---|
 | `xnu/` | the kernel patch and files; `apply.sh`, `export.sh`; a README about the kernel |
-| `xnu/files/bsd/dev/hakios_*.c` | my drivers: display, touch, UFS, GPU, Wi-Fi, audio, modem (`hakios.mpss.c`), SIM/NAS, haptics, cameras |
+| `xnu/files/bsd/dev/hakios.*.c` | my drivers: display, touch, UFS, GPU, Wi-Fi, audio, modem (`hakios.mpss.c`), its packets (`hakios.ipa.c`, `hakios.cell.c`), SIM/NAS, haptics, cameras |
 | `xnuloader/` | the boot loader (a UEFI application) |
 | `userland/` | my programs and libraries (`src/`), the image build, launchd jobs |
 | `sysimage/` | scripts that fetch and unpack the OS files from the IPSW (none of the files themselves) |
@@ -140,7 +140,7 @@ module, or the open lzfse library gets built). User space and the images: `REST=
 The kernel, loader and user space are shared. Everything about one phone lives in
 `devices/<name>/`: its UEFI, device tree, firmware list and tools. Today there is one,
 `devices/poco-x5-pro/`, and its README is the map of what a port to another Qualcomm phone must bring.
-The phone's drivers are the files `xnu/files/bsd/dev/hakios_*.c`; the head of each says where its
+The phone's drivers are the files `xnu/files/bsd/dev/hakios.*.c`; the head of each says where its
 numbers came from.
 
 ## Cellular
@@ -152,6 +152,20 @@ clock and SMMU context, and the handshake with the modem goes through. The SIM i
 subscription and NAS reads the signal. The current state and the whole story are in
 `docs/cellular.md`.
 
+## Independent, and Apple-free at the core
+
+HakiOS is an independent research project. It is **not affiliated with or endorsed by Apple**;
+"iOS", "iPhone", "XNU" and "Apple" are named only to describe what the code works with. The core
+kernel, the boot loader and the open tools build and run with nothing of Apple's:
+
+```sh
+make qemu-open      # the open kernel + a placeholder loader + a tiny raw-syscall user space, in QEMU
+```
+
+No IPSW, no iOS user space, no firmware. Booting the stock iOS user space (`make qemu`,
+`make phone`) is an optional path that needs the IPSW and the phone's firmware, which you supply
+from your own device.
+
 ## Licenses and the legal side
 
 My code is under the license of the files it changes: the XNU patch under the Apple Public Source
@@ -161,3 +175,8 @@ phone's firmware belong to their owners, are not in this repository and are not 
 everyone takes them from their own phone and their own IPSW. "iOS", "iPhone" and "Apple" are
 named only to describe what the code works with. If you believe a file here infringes anyone's
 rights, open an issue and I will remove it.
+
+The detail is in separate files: `LEGAL.md` (what is and is not distributed, and the limits of
+these statements), `COMPLIANCE.md` (how the APSL 2.0 and other terms are met, and the items still
+to verify), `THIRD_PARTY_LICENSES.md` (every third-party component with origin and license), and
+`NOTICE` (the short canonical list). None of this is legal advice.
